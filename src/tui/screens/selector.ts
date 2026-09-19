@@ -9,12 +9,12 @@ import {
 	shortId,
 	shortLabel,
 } from "../theme.ts";
-import { color, columns, justifySegs, seg } from "../layout.ts";
+import { color, columns, justifySegs, line, seg } from "../layout.ts";
 import type { Seg } from "../layout.ts";
 import { footer, header } from "../chrome.ts";
 import type { AppState } from "../state.ts";
 
-interface EpicStat {
+export interface EpicStat {
 	epic: Epic;
 	total: number;
 	done: number;
@@ -22,7 +22,7 @@ interface EpicStat {
 	pct: number;
 }
 
-interface ProjectRow {
+export interface ProjectRow {
 	project: Project;
 	epicStats: EpicStat[];
 	taskCount: number;
@@ -94,12 +94,23 @@ const ITEM_STYLE = (current: boolean) =>
 	current ? chalk.cyan.bold : chalk.reset;
 
 export function renderSelector(
-	ctx: CommandContext,
+	projects: ProjectRow[],
 	st: AppState,
 	w: number,
 	h: number,
+	error?: string,
 ): string[] {
-	const projects = loadProjects(ctx);
+	if (error !== undefined) {
+		const lines: string[] = [];
+		lines.push(
+			...header([seg("projects", chalk.white.bold)], w, {
+				subtitle: "pick a project, then drill into an epic to open its board",
+			}),
+		);
+		lines.push(line([seg(`⚠ ${error}`, chalk.red)], w));
+		for (let i = lines.length; i < h; i += 1) lines.push("");
+		return lines;
+	}
 	const pIndex = Math.min(st.pIndex, Math.max(0, projects.length - 1));
 	const sel = projects[pIndex];
 	const eMax = Math.max(0, (sel?.epicStats.length ?? 0) - 1);

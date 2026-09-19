@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 import type { CommandContext } from "../context.ts";
 import { recordEvent } from "../context.ts";
-import { appError } from "../domain/errors.ts";
+import { appError, describeIssues } from "../domain/errors.ts";
 import {
 	allowedTransition,
 	effectiveStatus,
@@ -71,7 +71,7 @@ export function createTask(ctx: CommandContext, input: unknown): Task {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { epic, name, description, dependsOn } = parsed.data;
 
@@ -118,7 +118,7 @@ export function createTasksBatch(ctx: CommandContext, input: unknown): Task[] {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { epic, file } = parsed.data;
 
@@ -143,7 +143,7 @@ export function createTasksBatch(ctx: CommandContext, input: unknown): Task[] {
 	if (!doc.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			doc.error.issues.map((i) => i.message).join("; "),
+			describeIssues(doc.error),
 		);
 	const entries = Array.isArray(doc.data) ? doc.data : doc.data.tasks;
 
@@ -219,7 +219,7 @@ export function listTasks(ctx: CommandContext, input: unknown): Task[] {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { epic, status, agent, unassigned } = parsed.data;
 
@@ -252,7 +252,7 @@ export function updateTask(ctx: CommandContext, input: unknown): Task {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { taskId, name, description } = parsed.data;
 
@@ -309,7 +309,7 @@ export function nextTask(ctx: CommandContext, input: unknown): Task | null {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { epic, agent } = parsed.data;
 
@@ -330,7 +330,7 @@ export function takeTask(ctx: CommandContext, input: unknown): Task | null {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { epic, agent } = parsed.data;
 
@@ -341,7 +341,7 @@ export function takeTask(ctx: CommandContext, input: unknown): Task | null {
 	return ctx.tx(() => {
 		const task = nextTask(ctx, { epic, agent });
 		if (!task) return null;
-		return claimTask(ctx, { taskId: task.id, agent: agent ?? "human" });
+		return claimTask(ctx, { taskId: task.id, agent: agent ?? ctx.actor });
 	});
 }
 
@@ -422,7 +422,7 @@ export function claimTask(ctx: CommandContext, input: unknown): Task {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { taskId, agent } = parsed.data;
 	const actor = parsed.data.actor ?? agent;
@@ -467,7 +467,7 @@ export function releaseTask(ctx: CommandContext, input: unknown): Task {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { taskId } = parsed.data;
 
@@ -498,7 +498,7 @@ export function submitTask(ctx: CommandContext, input: unknown): Task {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { taskId, reviewer } = parsed.data;
 
@@ -541,7 +541,7 @@ export function approveTask(ctx: CommandContext, input: unknown): Task {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { taskId, as } = parsed.data;
 
@@ -573,7 +573,7 @@ export function completeTask(ctx: CommandContext, input: unknown): Task {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { taskId } = parsed.data;
 
@@ -608,7 +608,7 @@ export function rejectTask(ctx: CommandContext, input: unknown): Task {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { taskId, as, reason } = parsed.data;
 
@@ -639,7 +639,7 @@ export function cancelTask(ctx: CommandContext, input: unknown): Task {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { taskId, reason } = parsed.data;
 	return ctx.tx(() => {
@@ -703,7 +703,7 @@ export function addTaskDependency(ctx: CommandContext, input: unknown): Task {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { taskId, on: depId } = parsed.data;
 
@@ -771,7 +771,7 @@ export function removeTaskDependency(
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { taskId, on: depId } = parsed.data;
 

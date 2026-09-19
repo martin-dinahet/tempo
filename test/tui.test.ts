@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { openDb } from "../src/repositories/sqlite.ts";
 import { createContext } from "../src/context.ts";
 import { paint } from "../src/tui/app.ts";
+import { loadFrameData } from "../src/tui/frame.ts";
 import { initialAppState } from "../src/tui/state.ts";
 import type { AppState } from "../src/tui/state.ts";
 import { createProject } from "../src/commands/project.ts";
@@ -33,9 +34,12 @@ function seedWriter(path: string): void {
 function frame(
 	ctx: ReturnType<typeof createContext>,
 	patch: Partial<AppState>,
+	w = 120,
+	h = 30,
 ): string {
 	const state: AppState = { ...initialAppState(), ...patch };
-	return paint(state, ctx, 120, 30);
+	const fd = loadFrameData(state, ctx);
+	return paint(state, fd, w, h);
 }
 
 describe("TUI (read-only viewer)", () => {
@@ -62,7 +66,8 @@ describe("TUI (read-only viewer)", () => {
 		const project = ctx.projects.findAll()[0]!;
 		const epic = ctx.epics.findByProject(project.id)[0]!;
 
-		const output = frame(ctx, { screen: "board", epicId: epic.id });
+		// Use 160 wide so all 6 kanban columns fit in the visible strip.
+		const output = frame(ctx, { screen: "board", epicId: epic.id }, 160);
 		db.close();
 
 		expect(output).toContain("blocked");

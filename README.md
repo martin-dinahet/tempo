@@ -25,9 +25,24 @@ a file to use something else — e.g. an older per-repo `./tempo.db`.
 ## CLI (for agents)
 
 Everything is `bun:sqlite`, single file, JSON in/JSON out. Errors are printed
-to stderr as `{"error":{"code","message"}}` with a non-zero exit code. Pass
-`--human` for formatted tables, `--db <path>` (or `TEMPO_DB`) to select a
-database file (default: the user-wide database above).
+to stderr as `{"error":{"code","message","hint"}}` with a non-zero exit code;
+`hint` (when present) is the suggested next step. Pass `--human` for formatted
+tables, `--db <path>` (or `TEMPO_DB`) to select a database file (default: the
+user-wide database above).
+
+Made to be driven by agents:
+
+- **Strict flags.** An unknown flag is an `UNKNOWN_FLAG` error (with a
+  "did you mean" hint) instead of being ignored.
+- **Agent identity.** Set `TEMPO_AGENT=<agentId>` once and it becomes the
+  default for `--agent` (`task take`, `task claim`) and `--as` (`task approve`,
+  `task reject`), and the actor recorded in the audit log. Without it,
+  `task take` records `human` and `task claim` requires `--agent`.
+- **Short ids.** Any unambiguous prefix of 4+ characters (the TUI shows 8) works
+  wherever an id does; an ambiguous one is an `AMBIGUOUS_ID` error listing the
+  matches.
+- **Scoped help.** `tempo task`, `tempo task --help` list one group;
+  `tempo task claim --help` shows one command.
 
 ```sh
 # projects
@@ -137,11 +152,12 @@ the activity feed only when there is room.
 
 - **project → epic selector**: `↑↓` move, `enter`/`→` drill in, `←`/`esc` back,
   `pgup`/`pgdn` page through long lists
-- **kanban board** (per epic): a full-width card board. A status strip across the
-  top always shows every column and its count; `←→`/`tab` changes the focused
-  column, `↑↓` moves between tasks, `pgup`/`pgdn` pages, `enter` opens the task.
-  Columns scroll horizontally when the terminal is too narrow, and a live
-  activity feed appears on wide terminals (≥116 cols)
+- **kanban board** (per epic): one bordered box per status column, each with a
+  title bar (glyph, status, task count) directly above its cards. The focused
+  column is highlighted; `←→`/`tab` changes it, `↑↓` moves between tasks,
+  `pgup`/`pgdn` pages, `enter` opens the task. Columns scroll horizontally when
+  the terminal is too narrow (the footer shows which column you are on), and a
+  live activity feed appears on wide terminals (≥116 cols)
 - **task detail**: dependencies with live status, dependents, scrollable event
   history (`↑↓` scroll, `esc` back)
 - `q` quits anywhere.
@@ -158,8 +174,7 @@ Point your agent at `skills/`, or copy them into your agent's skill directory.
 ## Development
 
 ```sh
-bun test         # 147 tests: domain, slices, CLI end-to-end, TUI render smoke
+bun test         # 158 tests: domain, slices, CLI end-to-end, TUI render smoke
 bun run typecheck
 bun run tempo -- project list --human --db ./tempo.db   # dev against a local scratch db
-PREV_W=120 PREV_H=30 bun run preview   # headless TUI render at a simulated terminal size
 ```

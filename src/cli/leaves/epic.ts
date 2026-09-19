@@ -9,6 +9,7 @@ import type { CommandLeaf } from "../types.ts";
 
 const epicCreate: CommandLeaf = {
 	path: "epic create",
+	ids: { flags: { project: "project" } },
 	spec: { project: "value", name: "value", description: "value" },
 	usage:
 		"epic create --project <projectId> --name <name> [--description <text>]",
@@ -35,6 +36,7 @@ function epicStatus(ctx: CommandContext, epicId: string): string {
 
 const epicList: CommandLeaf = {
 	path: "epic list",
+	ids: { flags: { project: "project" } },
 	spec: { project: "value" },
 	usage: "epic list --project <projectId>",
 	summary: "List epics in a project",
@@ -52,6 +54,7 @@ const epicList: CommandLeaf = {
 
 const epicShow: CommandLeaf = {
 	path: "epic show",
+	ids: { positional: "epic" },
 	spec: {},
 	usage: "epic show <epicId>",
 	summary: "Show an epic with its tasks, dependency tree and derived status",

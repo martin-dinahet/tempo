@@ -2,13 +2,15 @@ import { existsSync } from "node:fs";
 import { createContext } from "../context.ts";
 import { openDb } from "../repositories/sqlite.ts";
 import { handleKey, paint } from "./app.ts";
+import { loadFrameData } from "./frame.ts";
+import type { FrameData } from "./frame.ts";
 import { initialAppState } from "./state.ts";
 import { key, parseKeyToken } from "./keys.ts";
 
 /** Enter the alternate screen buffer, clear it, and hide the cursor. */
-const ENTER_FULLSCREEN = "\u001b[?1049h\u001b[2J\u001b[H\u001b[?25l";
+const ENTER_FULLSCREEN = "[?1049h[2J[H[?25l";
 /** Show the cursor and return to the primary screen buffer. */
-const EXIT_FULLSCREEN = "\u001b[?25h\u001b[?1049l";
+const EXIT_FULLSCREEN = "[?25h[?1049l";
 /** Poll the database this often (ms); the TUI is read-only and live. */
 const POLL_MS = 750;
 
@@ -42,12 +44,16 @@ export function startTui(dbPath: string): number {
 	let escTimer: ReturnType<typeof setTimeout> | null = null;
 	let poll: ReturnType<typeof setInterval>;
 
+	// Most recent frame data — key handlers use it for bounds without a DB re-read.
+	let frameData: FrameData = loadFrameData(state, ctx);
+
 	const paintFrame = () => {
 		if (quit) return;
-		const frame = paint(state, ctx, w, h);
+		frameData = loadFrameData(state, ctx);
+		const frame = paint(state, frameData, w, h);
 		if (frame !== last) {
 			last = frame;
-			out.write(`\u001b[H${frame}`);
+			out.write("[H" + frame);
 		}
 	};
 
@@ -71,20 +77,22 @@ export function startTui(dbPath: string): number {
 				clearTimeout(escTimer);
 				escTimer = null;
 			}
-			if (handleKey(state, ctx, parsed.parsed, w, h)) {
+			// Use last frame's data for bounds checking in the key handler, then
+			// reload after state mutation so the render reflects any screen change.
+			if (handleKey(state, frameData, parsed.parsed, w, h)) {
 				doQuit();
 				return;
 			}
 			paintFrame();
 		}
-		if (!quit && buffer === "\u001b" && !escTimer) {
+		if (!quit && buffer === "" && !escTimer) {
 			// A lone ESC needs a moment to tell "Escape" apart from the start
 			// of an arrow-key sequence.
 			escTimer = setTimeout(() => {
 				escTimer = null;
-				if (quit || buffer !== "\u001b") return;
+				if (quit || buffer !== "") return;
 				buffer = "";
-				if (handleKey(state, ctx, key("escape"), w, h)) doQuit();
+				if (handleKey(state, frameData, key("escape"), w, h)) doQuit();
 				else paintFrame();
 			}, 45);
 		}

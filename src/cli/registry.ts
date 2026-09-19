@@ -16,20 +16,29 @@ for (const leaf of [
 	registry.set(leaf.path, leaf);
 }
 
-export function helpText(): string {
+/**
+ * Help text. With `scope` set to a command path (`task claim`) it shows just
+ * that command; set to a group (`task`) it lists that group's commands.
+ */
+export function helpText(scope?: string): string {
+	const single = scope ? registry.get(scope) : undefined;
+	if (single) {
+		return [`Usage: tempo ${single.usage}`, single.summary].join("\n");
+	}
+	const leaves = [...registry.values()]
+		.filter((leaf) => !scope || leaf.path.startsWith(`${scope} `))
+		.sort((a, b) => a.path.localeCompare(b.path));
+	const shown = leaves.length > 0 ? leaves : [...registry.values()];
 	const lines = [
 		"tempo — local-first project/epic/task tracker",
 		"Usage: tempo <command> [args] [--db <path>] [--human]",
 		"",
 		"Commands:",
-	];
-	const paths = [...registry.values()]
-		.sort((a, b) => a.path.localeCompare(b.path))
-		.map((leaf) => `  ${leaf.usage.padEnd(62)}  ${leaf.summary}`);
-	lines.push(...paths);
-	lines.push(
+		...shown.map((leaf) => `  ${leaf.usage.padEnd(62)}  ${leaf.summary}`),
 		"",
 		"Global flags: --db <sqlite path> (env TEMPO_DB), --human, --help",
-	);
+		"Identity: set TEMPO_AGENT=<agentId> to default --agent / --as",
+		"Ids: any unambiguous prefix (4+ characters) works in place of a full id",
+	];
 	return lines.join("\n");
 }

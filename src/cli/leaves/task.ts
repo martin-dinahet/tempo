@@ -18,7 +18,13 @@ import {
 	updateTask,
 } from "../../commands/task.ts";
 import type { TaskDetail } from "../../services/queries.ts";
-import { optBool, optList, optPositional, optStr } from "../args.ts";
+import {
+	envAgent,
+	optBool,
+	optList,
+	optPositional,
+	optStr,
+} from "../args.ts";
 import { kv, listSection, table } from "../output.ts";
 import type { CommandLeaf } from "../types.ts";
 
@@ -32,6 +38,7 @@ const taskRows = (tasks: Task[]) =>
 
 const taskDetail: CommandLeaf = {
 	path: "task create",
+	ids: { flags: { epic: "epic", "depends-on": "task" } },
 	spec: {
 		epic: "value",
 		name: "value",
@@ -61,6 +68,7 @@ const taskDetail: CommandLeaf = {
 
 const taskBatch: CommandLeaf = {
 	path: "task create batch",
+	ids: { flags: { epic: "epic" } },
 	spec: { epic: "value", file: "value" },
 	usage: "task create batch --epic <epicId> --file <path>",
 	summary: "Bulk-create tasks from a JSON file (`--file -` reads stdin)",
@@ -74,6 +82,7 @@ const taskBatch: CommandLeaf = {
 
 const taskList: CommandLeaf = {
 	path: "task list",
+	ids: { flags: { epic: "epic" } },
 	spec: {
 		epic: "value",
 		status: "value",
@@ -95,6 +104,7 @@ const taskList: CommandLeaf = {
 
 const taskShow: CommandLeaf = {
 	path: "task show",
+	ids: { positional: "task" },
 	spec: {},
 	usage: "task show <taskId>",
 	summary: "Show a task with deps, dependents and event history",
@@ -137,6 +147,7 @@ const taskShow: CommandLeaf = {
 
 const taskUpdate: CommandLeaf = {
 	path: "task update",
+	ids: { positional: "task" },
 	spec: { name: "value", description: "value" },
 	usage: "task update <taskId> [--name <name>] [--description <text>]",
 	summary: "Edit a task's name or description",
@@ -152,6 +163,7 @@ const taskUpdate: CommandLeaf = {
 
 const taskNext: CommandLeaf = {
 	path: "task next",
+	ids: { flags: { epic: "epic" } },
 	spec: { epic: "value", agent: "value" },
 	usage: "task next --epic <epicId> [--agent <agentId>]",
 	summary: "Return the best unblocked, unassigned todo task (or null)",
@@ -168,6 +180,7 @@ const taskNext: CommandLeaf = {
 
 const taskTake: CommandLeaf = {
 	path: "task take",
+	ids: { flags: { epic: "epic" } },
 	spec: { epic: "value", agent: "value" },
 	usage: "task take --epic <epicId> [--agent <agentId>]",
 	summary: "Atomically claim the next available task (or null)",
@@ -184,13 +197,14 @@ const taskTake: CommandLeaf = {
 
 const claimed: CommandLeaf = {
 	path: "task claim",
+	ids: { positional: "task" },
 	spec: { agent: "value" },
 	usage: "task claim <taskId> --agent <agentId>",
 	summary: "Assign the task to an agent and mark it in_progress",
 	run: (ctx, parsed) =>
 		claimTask(ctx, {
 			taskId: optPositional(parsed, 0, "taskId"),
-			agent: optStr(parsed, "agent") ?? "",
+			agent: optStr(parsed, "agent") ?? envAgent() ?? "",
 		}),
 	human: (data) =>
 		kv(data as Record<string, unknown>, [
@@ -203,6 +217,7 @@ const claimed: CommandLeaf = {
 
 const released: CommandLeaf = {
 	path: "task release",
+	ids: { positional: "task" },
 	spec: {},
 	usage: "task release <taskId>",
 	summary: "Unassign a task back to its computed status",
@@ -219,6 +234,7 @@ const released: CommandLeaf = {
 
 const submitted: CommandLeaf = {
 	path: "task submit",
+	ids: { positional: "task" },
 	spec: { reviewer: "value" },
 	usage: "task submit <taskId> [--reviewer <agentId>]",
 	summary:
@@ -234,13 +250,14 @@ const submitted: CommandLeaf = {
 
 const approved: CommandLeaf = {
 	path: "task approve",
+	ids: { positional: "task" },
 	spec: { as: "value" },
 	usage: "task approve <taskId> [--as <reviewerAgentId>]",
 	summary: "Approve an in_review task (reviewer passes --as to act)",
 	run: (ctx, parsed) =>
 		approveTask(ctx, {
 			taskId: optPositional(parsed, 0, "taskId"),
-			as: optStr(parsed, "as"),
+			as: optStr(parsed, "as") ?? envAgent(),
 		}),
 	human: (data) =>
 		kv(data as Record<string, unknown>, ["id", "name", "status"]),
@@ -248,6 +265,7 @@ const approved: CommandLeaf = {
 
 const rejected: CommandLeaf = {
 	path: "task reject",
+	ids: { positional: "task" },
 	spec: { reason: "value", as: "value" },
 	usage: "task reject <taskId> --reason <text> [--as <reviewerAgentId>]",
 	summary: "Reject an in_review task back to in_progress",
@@ -255,7 +273,7 @@ const rejected: CommandLeaf = {
 		rejectTask(ctx, {
 			taskId: optPositional(parsed, 0, "taskId"),
 			reason: optStr(parsed, "reason"),
-			as: optStr(parsed, "as"),
+			as: optStr(parsed, "as") ?? envAgent(),
 		}),
 	human: (data) =>
 		kv(data as Record<string, unknown>, ["id", "name", "status"]),
@@ -263,6 +281,7 @@ const rejected: CommandLeaf = {
 
 const completed: CommandLeaf = {
 	path: "task complete",
+	ids: { positional: "task" },
 	spec: {},
 	usage: "task complete <taskId>",
 	summary: "Complete an unclaimed, unstarted task without the review flow",
@@ -274,6 +293,7 @@ const completed: CommandLeaf = {
 
 const cancelled: CommandLeaf = {
 	path: "task cancel",
+	ids: { positional: "task" },
 	spec: { reason: "value" },
 	usage: "task cancel <taskId> --reason <text>",
 	summary: "Cancel a non-terminal task",
@@ -288,6 +308,7 @@ const cancelled: CommandLeaf = {
 
 const depended: CommandLeaf = {
 	path: "task depend",
+	ids: { positional: "task", flags: { on: "task" } },
 	spec: { on: "value" },
 	usage: "task depend <taskId> --on <dependsOnTaskId>",
 	summary: "Add a finish-to-start dependency",
@@ -302,6 +323,7 @@ const depended: CommandLeaf = {
 
 const undepended: CommandLeaf = {
 	path: "task undepend",
+	ids: { positional: "task", flags: { on: "task" } },
 	spec: { on: "value" },
 	usage: "task undepend <taskId> --on <dependsOnTaskId>",
 	summary: "Remove a finish-to-start dependency",

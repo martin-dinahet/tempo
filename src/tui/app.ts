@@ -1,27 +1,26 @@
-import type { CommandContext } from "../context.ts";
-import { getEpicDetail, getTaskDetail } from "../services/queries.ts";
+import chalk from "chalk";
+import type { FrameData, ProjectRow, TaskDetail } from "./frame.ts";
+import type { TaskWithGraph } from "../services/queries.ts";
 import type { KeyEvent } from "./keys.ts";
-import {
-	renderSelector,
-	loadProjects,
-	selectorLayout,
-} from "./screens/selector.ts";
-import { renderBoard, boardLayout, COLUMNS } from "./screens/board.ts";
+import { renderSelector, selectorLayout } from "./screens/selector.ts";
+import { renderBoard, boardLayout, COLUMNS, EMPTY_BOARD } from "./screens/board.ts";
 import { renderTaskDetail, historyHeight } from "./screens/task-detail.ts";
+import { line, seg } from "./layout.ts";
+import { header, footer } from "./chrome.ts";
 import type { AppState } from "./state.ts";
 
 /**
  * Render the current screen to a full `h`-line frame, every line exactly `w`
- * characters wide. Pure function over (state, ctx) so it is easy to preview
+ * characters wide. Pure function over (state, fd) so it is easy to preview
  * and test headlessly.
  */
 export function paint(
 	state: AppState,
-	ctx: CommandContext,
+	fd: FrameData,
 	w: number,
 	h: number,
 ): string {
-	const lines = renderLines(state, ctx, w, h);
+	const lines = renderLines(state, fd, w, h);
 	const rows: string[] = [];
 	for (let i = 0; i < h; i += 1) {
 		const l = lines[i] ?? "";
@@ -32,18 +31,30 @@ export function paint(
 
 function renderLines(
 	state: AppState,
-	ctx: CommandContext,
+	fd: FrameData,
 	w: number,
 	h: number,
 ): string[] {
-	switch (state.screen) {
-		case "selector":
-			return renderSelector(ctx, state, w, h);
-		case "board":
-			return renderBoard(ctx, state, w, h);
-		case "detail":
-			return renderTaskDetail(ctx, state, w, h);
+	if (!fd.ok) {
+		return renderErrorScreen(fd.error, w, h);
 	}
+	switch (fd.screen) {
+		case "selector":
+			return renderSelector(fd.data, state, w, h);
+		case "board":
+			return renderBoard(fd.data, state, w, h);
+		case "detail":
+			return renderTaskDetail(fd.data, state, w, h);
+	}
+}
+
+function renderErrorScreen(error: string, w: number, h: number): string[] {
+	const lines: string[] = [];
+	lines.push(...header([seg("error", chalk.red.bold)], w));
+	lines.push(line([seg(`⚠ ${error}`, chalk.red)], w));
+	for (let i = lines.length; i < h - 2; i += 1) lines.push("");
+	lines.push(...footer([seg("q quit", chalk.dim)], w));
+	return lines;
 }
 
 /**
@@ -52,32 +63,40 @@ function renderLines(
  */
 export function handleKey(
 	state: AppState,
-	ctx: CommandContext,
+	fd: FrameData,
 	key: KeyEvent,
 	_w: number,
 	h: number,
 ): boolean {
-	if (key.code === "char" && (key.input === "q" || key.input === "\u0003"))
+	if (key.code === "char" && (key.input === "q" || key.input === ""))
 		return true;
 
 	switch (state.screen) {
-		case "selector":
-			return selectorKey(state, ctx, key, h);
-		case "board":
-			return boardKey(state, ctx, key, h);
-		case "detail":
-			return detailKey(state, ctx, key, h);
+		case "selector": {
+			const projects = fd.screen === "selector" && fd.ok ? fd.data : [];
+			return selectorKey(state, projects, key, h);
+		}
+		case "board": {
+			const tasks =
+				fd.screen === "board" && fd.ok ? fd.data.tasks : [];
+			return boardKey(state, tasks, key, h);
+		}
+		case "detail": {
+			const detail =
+				fd.screen === "detail" && fd.ok ? fd.data : null;
+			return detailKey(state, detail, key, h);
+		}
 	}
 }
 
 function selectorKey(
 	state: AppState,
-	ctx: CommandContext,
+	projects: ProjectRow[],
 	key: KeyEvent,
 	h: number,
 ): boolean {
-	const projects = loadProjects(ctx);
-	const sel = projects[state.pIndex];
+	const pIndex = Math.min(state.pIndex, Math.max(0, projects.length - 1));
+	const sel = projects[pIndex];
 	const visible = selectorLayout(h);
 
 	const moveP = (next: number) => {
@@ -142,10 +161,12 @@ function selectorKey(
 				state.eIndex = 0;
 				state.scrollE = 0;
 				state.projectId = sel.project.id;
+				state.projectName = sel.project.name;
 			} else if (state.level === 1 && sel) {
 				const epic = sel.epicStats[state.eIndex]?.epic;
 				if (epic) {
 					state.epicId = epic.id;
+					state.epicName = epic.name;
 					state.screen = "board";
 					state.col = 0;
 					state.row = 0;
@@ -168,26 +189,18 @@ function selectorKey(
 
 function boardKey(
 	state: AppState,
-	ctx: CommandContext,
+	tasks: TaskWithGraph[],
 	key: KeyEvent,
 	h: number,
 ): boolean {
-	const columnTasks = (() => {
-		try {
-			return getEpicDetail(ctx, state.epicId ?? "").tasks;
-		} catch {
-			return [];
-		}
-	})();
-	const inColumn = (col: number) =>
-		columnTasks.filter((t) => t.status === COLUMNS[col]).length;
 	const columnList = (col: number) =>
-		columnTasks.filter((t) => t.status === COLUMNS[col]);
+		tasks.filter((t) => t.status === COLUMNS[col]);
 	const cardH = boardLayout(h);
 
 	switch (key.code) {
 		case "escape":
 			state.screen = "selector";
+			state.level = 1;
 			break;
 		case "tab":
 			if (key.shift) state.col = Math.max(0, state.col - 1);
@@ -206,14 +219,17 @@ function boardKey(
 			state.row = Math.max(0, state.row - 1);
 			break;
 		case "down":
-			state.row = Math.min(Math.max(0, inColumn(state.col) - 1), state.row + 1);
+			state.row = Math.min(
+				Math.max(0, columnList(state.col).length - 1),
+				state.row + 1,
+			);
 			break;
 		case "pageup":
 			state.row = Math.max(0, state.row - cardH);
 			break;
 		case "pagedown":
 			state.row = Math.min(
-				Math.max(0, inColumn(state.col) - 1),
+				Math.max(0, columnList(state.col).length - 1),
 				state.row + cardH,
 			);
 			break;
@@ -235,21 +251,12 @@ function boardKey(
 
 function detailKey(
 	state: AppState,
-	ctx: CommandContext,
+	detail: TaskDetail | null,
 	key: KeyEvent,
 	h: number,
 ): boolean {
-	let feedLen = 0;
-	let historyLines = 10;
-	if (state.taskId) {
-		try {
-			const detail = getTaskDetail(ctx, state.taskId);
-			feedLen = detail.events.length;
-			historyLines = historyHeight(detail, h);
-		} catch {
-			// task went away; treat as empty
-		}
-	}
+	const feedLen = detail?.events.length ?? 0;
+	const historyLines = detail ? historyHeight(detail, h) : 10;
 
 	switch (key.code) {
 		case "escape":

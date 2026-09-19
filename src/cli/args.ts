@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { appError } from "../domain/errors.ts";
+import type { AppError } from "../domain/errors.ts";
 
 export type ArgKind = "boolean" | "value" | "values";
 
@@ -30,7 +31,8 @@ export function parseArgs(
 		}
 		if (token.length >= 2 && token.startsWith("--")) {
 			const name = token.slice(2);
-			const kind = spec[name] ?? "boolean";
+			const kind = spec[name];
+			if (kind === undefined) throw unknownFlag(name, spec);
 			if (kind === "boolean") {
 				options[name] = true;
 				i += 1;
@@ -58,6 +60,59 @@ export function parseArgs(
 	}
 
 	return { positional, options };
+}
+
+function distance(a: string, b: string): number {
+	let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+	for (let i = 1; i <= a.length; i += 1) {
+		const row = [i];
+		for (let j = 1; j <= b.length; j += 1) {
+			row[j] = Math.min(
+				prev[j]! + 1,
+				row[j - 1]! + 1,
+				prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
+			);
+		}
+		prev = row;
+	}
+	return prev[b.length]!;
+}
+
+/** Closest candidate within two edits, for "did you mean" hints. */
+export function closest(
+	name: string,
+	candidates: readonly string[],
+): string | undefined {
+	let best: string | undefined;
+	let bestDistance = 3;
+	for (const candidate of candidates) {
+		const d = distance(name, candidate);
+		if (d < bestDistance) {
+			best = candidate;
+			bestDistance = d;
+		}
+	}
+	return best;
+}
+
+function unknownFlag(name: string, spec: Record<string, ArgKind>): AppError {
+	const valid = Object.keys(spec);
+	const guess = closest(name, valid);
+	const list =
+		valid.length > 0
+			? `Valid flags: ${valid.map((f) => `--${f}`).join(", ")}.`
+			: "This command takes no flags.";
+	return appError(
+		"UNKNOWN_FLAG",
+		`unknown flag --${name}`,
+		guess ? `Did you mean --${guess}? ${list}` : list,
+	);
+}
+
+/** The agent id from `TEMPO_AGENT`, used when `--agent` / `--as` is omitted. */
+export function envAgent(): string | undefined {
+	const value = process.env.TEMPO_AGENT?.trim();
+	return value ? value : undefined;
 }
 
 /** Pick a single value option, with a convenient default. */

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { CommandContext } from "../context.ts";
-import { appError } from "../domain/errors.ts";
+import { appError, describeIssues } from "../domain/errors.ts";
 import type { AppEvent } from "../domain/types.ts";
 
 const listSchema = z.object({
@@ -20,7 +20,7 @@ export function listEvents(ctx: CommandContext, input: unknown): AppEvent[] {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { epic, entity, limit } = parsed.data;
 

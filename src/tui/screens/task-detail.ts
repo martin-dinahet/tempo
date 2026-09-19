@@ -1,6 +1,4 @@
 import chalk from "chalk";
-import type { CommandContext } from "../../context.ts";
-import { getTaskDetail } from "../../services/queries.ts";
 import type { TaskDetail as TaskDetailData } from "../../services/queries.ts";
 import {
 	STATUS_COLORS,
@@ -22,29 +20,46 @@ import type { Seg } from "../layout.ts";
 import { footer, header } from "../chrome.ts";
 import type { AppState } from "../state.ts";
 
-/** Lines above the history block for a given task detail + terminal height. */
+// Named layout constants so changes to the detail screen stay self-documenting.
+const HEADER_ROWS = 4; // brand line, blank, title row (no subtitle/extra), rule
+const TITLE_ROW = 1; // glyph + task name + status badge
+const META_ROWS = 2; // assignee/reviewer/status + created/updated/id
+const DESC_ROW = 1; // description
+const HISTORY_LABEL_ROW = 1; // "History" label + scroll hint
+const FOOTER_ROWS = 2; // rule + key-hints line
+
+/** Lines available for the event history at terminal height `h`. */
 export function historyHeight(detail: TaskDetailData, h: number): number {
 	const edgeRows =
 		2 +
 		Math.max(1, Math.max(detail.dependencies.length, detail.dependents.length));
-	return Math.max(1, h - (4 + 1 + 2 + 1 + edgeRows) - 3);
+	const chrome =
+		HEADER_ROWS + TITLE_ROW + META_ROWS + DESC_ROW + edgeRows + HISTORY_LABEL_ROW + FOOTER_ROWS;
+	return Math.max(1, h - chrome);
 }
 
 export function renderTaskDetail(
-	ctx: CommandContext,
+	detail: TaskDetailData | null,
 	st: AppState,
 	w: number,
 	h: number,
+	error?: string,
 ): string[] {
-	let detail: TaskDetailData | null = null;
-	try {
-		detail = getTaskDetail(ctx, st.taskId ?? "");
-	} catch {
-		detail = null;
-	}
+	const crumb: Seg[] = [
+		seg("task", chalk.white.bold),
+		...(st.projectName ? [seg(` › ${st.projectName}`, chalk.dim)] : []),
+		...(st.epicName ? [seg(` › ${st.epicName}`, chalk.dim)] : []),
+	];
 
 	const lines: string[] = [];
-	lines.push(...header([seg("tasks", chalk.white.bold)], w));
+	lines.push(...header(crumb, w));
+
+	if (error !== undefined) {
+		lines.push(line([seg(`⚠ ${error}`, chalk.red)], w));
+		for (let i = lines.length; i < h; i += 1) lines.push("");
+		return lines;
+	}
+
 	if (!detail) {
 		lines.push(line([seg("…", chalk.dim)], w));
 		for (let i = lines.length; i < h; i += 1) lines.push("");

@@ -5,6 +5,7 @@ import type { CommandLeaf } from "../types.ts";
 
 const eventListLeaf: CommandLeaf = {
 	path: "event list",
+	ids: { flags: { epic: "epic", entity: "task" } },
 	spec: { epic: "value", entity: "value", limit: "value" },
 	usage: "event list --epic <epicId> [--entity <entityId>] [--limit <n>]",
 	summary: "List audit events for an epic",

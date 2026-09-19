@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { CommandContext } from "../context.ts";
 import { recordEvent } from "../context.ts";
-import { appError } from "../domain/errors.ts";
+import { appError, describeIssues } from "../domain/errors.ts";
 import type { Project } from "../domain/types.ts";
 
 export const createProjectSchema = z.object({
@@ -19,7 +19,7 @@ export function createProject(ctx: CommandContext, input: unknown): Project {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { name, description } = parsed.data;
 

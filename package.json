@@ -6,7 +6,6 @@
 		"dev": "bun run ./src/main.ts",
 		"tempo": "bun run ./src/main.ts",
 		"tui": "bun run ./src/tui/main.ts",
-		"preview": "bun run ./scripts/preview-tui.ts",
 		"lint": "biome lint",
 		"format": "biome format --write",
 		"test": "bun test",

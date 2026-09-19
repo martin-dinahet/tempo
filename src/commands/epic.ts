@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { CommandContext } from "../context.ts";
 import { recordEvent } from "../context.ts";
-import { appError } from "../domain/errors.ts";
+import { appError, describeIssues } from "../domain/errors.ts";
 import type { Epic } from "../domain/types.ts";
 import { getEpicDetail } from "../services/queries.ts";
 
@@ -22,7 +22,7 @@ export function createEpic(ctx: CommandContext, input: unknown): Epic {
 	if (!parsed.success)
 		throw appError(
 			"INVALID_ARGUMENT",
-			parsed.error.issues.map((i) => i.message).join("; "),
+			describeIssues(parsed.error),
 		);
 	const { project, name, description } = parsed.data;
 

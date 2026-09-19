@@ -12,6 +12,8 @@ export type { AppEvent, Epic, Project, Task, TaskDependency, TaskStatus };
 export interface ProjectRepository {
 	create(project: Project): Project;
 	findById(id: string): Project | null;
+	/** Ids starting with `prefix` (hex digits and dashes only), at most 5. */
+	findIdsByPrefix(prefix: string): string[];
 	findAll(): Project[];
 	findByName(name: string): Project | null;
 }
@@ -19,6 +21,8 @@ export interface ProjectRepository {
 export interface EpicRepository {
 	create(epic: Epic): Epic;
 	findById(id: string): Epic | null;
+	/** Ids starting with `prefix` (hex digits and dashes only), at most 5. */
+	findIdsByPrefix(prefix: string): string[];
 	findByProject(projectId: string): Epic[];
 	touch(id: string, updatedAt: string): void;
 }
@@ -26,6 +30,8 @@ export interface EpicRepository {
 export interface TaskRepository {
 	create(task: Task): Task;
 	findById(id: string): Task | null;
+	/** Ids starting with `prefix` (hex digits and dashes only), at most 5. */
+	findIdsByPrefix(prefix: string): string[];
 	/** `undefined` epicId means no epic filter (query across all epics). */
 	findByEpic(
 		epicId: string | undefined,

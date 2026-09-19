@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import type { ChalkInstance } from "chalk";
 import type { CommandContext } from "../../context.ts";
 import type { AppEvent, TaskStatus } from "../../domain/types.ts";
 import { getEpicDetail } from "../../services/queries.ts";
@@ -11,9 +12,15 @@ import {
 	formatClock,
 	formatEvent,
 	progressBar,
-	shortLabel,
 } from "../theme.ts";
-import { background, color, columns, line, seg } from "../layout.ts";
+import {
+	background,
+	color,
+	columns,
+	narrow,
+	plainWidth,
+	seg,
+} from "../layout.ts";
 import type { Seg } from "../layout.ts";
 import { footer, header } from "../chrome.ts";
 import type { AppState } from "../state.ts";
@@ -30,13 +37,19 @@ export const COLUMNS: readonly TaskStatus[] = [
 const SIDEBAR_W = 34;
 const SIDEBAR_MIN_WIDTH = 116;
 const GUTTER = 1;
-const MIN_COL_W = 16;
+const MIN_COL_W = 20;
 const CARD_LINES = 3;
 
-/** Lines used by header + status strip + footer around the columns area. */
-const BOARD_CHROME = 10;
+/** Border + padding on each side of a column's content: `│ … │`. */
+const BOX_INSET = 4;
 
-interface BoardData {
+/**
+ * Lines used around the card rows: header (6) + footer (2) + each column's
+ * title bar, guide line and bottom border (3) + the "↑ above" / "↓ below" rows (2).
+ */
+const BOARD_CHROME = 13;
+
+export interface BoardData {
 	projectName: string;
 	name: string;
 	description: string | null;
@@ -49,7 +62,7 @@ interface BoardData {
 	bare: boolean;
 }
 
-const EMPTY_BOARD: BoardData = {
+export const EMPTY_BOARD: BoardData = {
 	projectName: "",
 	name: "…",
 	description: null,
@@ -62,21 +75,10 @@ const EMPTY_BOARD: BoardData = {
 	bare: true,
 };
 
-function loadBoard(ctx: CommandContext, epicId: string | null): BoardData {
+export function loadBoard(ctx: CommandContext, epicId: string | null): BoardData {
 	if (!epicId) return EMPTY_BOARD;
-	let detail: ReturnType<typeof getEpicDetail> | undefined;
-	try {
-		detail = getEpicDetail(ctx, epicId);
-	} catch {
-		return EMPTY_BOARD;
-	}
-	const events = (() => {
-		try {
-			return ctx.events.listByEpic(epicId, { limit: 40 });
-		} catch {
-			return [];
-		}
-	})();
+	const detail = getEpicDetail(ctx, epicId);
+	const events = ctx.events.listByEpic(epicId, { limit: 40 });
 	return {
 		projectName:
 			ctx.projects.findById(detail.project_id)?.name ?? "unknown project",
@@ -98,10 +100,11 @@ export function boardLayout(h: number): number {
 }
 
 export function renderBoard(
-	ctx: CommandContext,
+	data: BoardData,
 	st: AppState,
 	w: number,
 	h: number,
+	error?: string,
 ): string[] {
 	const {
 		bare,
@@ -114,7 +117,7 @@ export function renderBoard(
 		active,
 		events,
 		tasks,
-	} = loadBoard(ctx, st.epicId);
+	} = error !== undefined ? EMPTY_BOARD : data;
 
 	const byColumn = new Map<TaskStatus, TaskWithGraph[]>();
 	for (const c of COLUMNS) byColumn.set(c, []);
@@ -124,7 +127,7 @@ export function renderBoard(
 	const avail = w - (showSidebar ? SIDEBAR_W + 1 : 1);
 	const fit = Math.min(
 		COLUMNS.length,
-		Math.max(1, Math.floor(avail / (MIN_COL_W + GUTTER))),
+		Math.max(1, Math.floor((avail + GUTTER) / (MIN_COL_W + GUTTER))),
 	);
 	const colW = Math.max(
 		MIN_COL_W,
@@ -153,34 +156,29 @@ export function renderBoard(
 			w,
 			{
 				right: bare ? undefined : [statusBadge(status)],
-				subtitle: description ? `${projectName} · ${description}` : projectName,
-				extra: [
-					seg(progressBar(percentDone, 26), color("green")),
-					seg(
-						` ${percentDone}% complete · ${total} tasks · ${
-							active > 0 ? `${active} in flight` : "nothing in flight"
-						}`,
-						chalk.bold,
-					),
-				],
+				subtitle: error !== undefined
+					? `⚠ ${error}`
+					: description
+						? `${projectName} · ${description}`
+						: projectName,
+				extra: error === undefined
+					? [
+						seg(progressBar(percentDone, 26), color("green")),
+						seg(
+							` ${percentDone}% complete · ${total} tasks · ${
+								active > 0 ? `${active} in flight` : "nothing in flight"
+							}`,
+							chalk.bold,
+						),
+					]
+					: undefined,
 			},
 		),
 	);
 
-	const strip: Seg[] = [];
-	for (let ci = 0; ci < COLUMNS.length; ci += 1) {
-		const column = COLUMNS[ci]!;
-		const n = byColumn.get(column)?.length ?? 0;
-		const label = w < 118 ? shortLabel(column) : column;
-		if (ci > 0) strip.push(seg("   "));
-		strip.push(
-			seg(
-				` ${STATUS_GLYPHS[column] ?? "·"} ${label} ${n} `,
-				ci === st.col ? chalk.inverse.white.bold : chalk.gray,
-			),
-		);
-	}
-	lines.push(line(strip, w));
+	const afterHeader = lines.length;
+	const areaH = h - afterHeader - 2;
+	const inner = colW - BOX_INSET;
 
 	const cols: Seg[][][] = visible.map((column, vi) => {
 		const list = byColumn.get(column) ?? [];
@@ -188,23 +186,31 @@ export function renderBoard(
 		const shown = isActive ? activeView : list.slice(0, cardH);
 		const before = isActive ? offset : 0;
 		const overflow = list.length - (before + shown.length);
-		const cells: Seg[][] = [
-			columnHeader(column, list.length, isActive, colW),
-			[seg(isActive ? "" : (STATUS_GUIDES[column] ?? ""), chalk.dim)],
-			[],
-		];
-		if (before > 0) cells.push([seg(`↑ ${before} above`, chalk.dim)]);
+		const border = isActive
+			? color(STATUS_COLORS[column] ?? "gray").bold
+			: chalk.dim;
+
+		const body: Seg[][] = [];
+		if (before > 0) body.push([seg(`↑ ${before} above`, chalk.dim)]);
 		for (let ri = 0; ri < shown.length; ri += 1) {
-			cells.push(
-				...taskCard(shown[ri]!, isActive && ri === row - offset, colW),
+			body.push(
+				...taskCard(shown[ri]!, isActive && ri === row - offset, inner),
 			);
 		}
-		if (shown.length === 0) cells.push([seg("— empty —", chalk.dim)]);
-		if (overflow > 0) cells.push([seg(`↓ ${overflow} below`, chalk.dim)]);
+		if (shown.length === 0) body.push([seg("— empty —", chalk.dim)]);
+		if (overflow > 0) body.push([seg(`↓ ${overflow} below`, chalk.dim)]);
+
+		const bodyH = Math.max(0, areaH - 3);
+		const cells: Seg[][] = [
+			columnTop(column, list.length, isActive, colW, border),
+			boxRow([seg(STATUS_GUIDES[column] ?? "", chalk.dim)], inner, border),
+		];
+		for (let i = 0; i < bodyH; i += 1)
+			cells.push(boxRow(body[i] ?? [], inner, border));
+		cells.push([seg(`╰${"─".repeat(colW - 2)}╯`, border)]);
 		return cells;
 	});
 
-	const afterStrip = lines.length;
 	const feedLimit = Math.max(1, h - 12);
 	const sidebarCells: Seg[][] = [
 		[seg("Recent activity", chalk.white.bold)],
@@ -231,7 +237,6 @@ export function renderBoard(
 		: visible.map(() => colW);
 	const panelCols = showSidebar ? [...cols, sidebarCells] : cols;
 	const panel = columns(panelCols, widths, " ");
-	const areaH = h - afterStrip - 2;
 	for (let i = 0; i < Math.min(panel.length, areaH); i += 1)
 		lines.push(panel[i]!);
 	for (let i = panel.length; i < areaH; i += 1) lines.push("");
@@ -239,8 +244,8 @@ export function renderBoard(
 	const colLabel = COLUMNS[st.col] ?? "todo";
 	const taskCount =
 		activeList.length > 0
-			? `${colLabel} · task ${row + 1}/${activeList.length}`
-			: `${colLabel} · 0 tasks`;
+			? `${colLabel} (${st.col + 1}/${COLUMNS.length}) · task ${row + 1}/${activeList.length}`
+			: `${colLabel} (${st.col + 1}/${COLUMNS.length}) · 0 tasks`;
 	lines.push(
 		...footer(
 			[
@@ -265,18 +270,48 @@ function statusBadge(status: string): Seg {
 	return seg(` ${status} `, background(colors[status] ?? "blue").black.bold);
 }
 
-function columnHeader(
+/**
+ * Title bar that doubles as the top edge of a column's box:
+ * `╭ ◐ in_progress ───── 3 ╮`. The active column gets a filled status pill.
+ */
+function columnTop(
 	column: TaskStatus,
 	count: number,
 	active: boolean,
 	width: number,
+	border: ChalkInstance,
 ): Seg[] {
 	const accent = color(STATUS_COLORS[column] ?? "gray");
-	const text = ` ${STATUS_GLYPHS[column] ?? "·"} ${column} ${count} `.padEnd(
-		width,
-		" ",
-	);
-	return [active ? seg(text, accent.black.bold) : seg(text, accent)];
+	const title = ` ${STATUS_GLYPHS[column] ?? "·"} ${column} `;
+	const tail = ` ${count > 99 ? "99+" : count} `;
+	const fill = Math.max(0, width - 2 - title.length - tail.length);
+	return [
+		seg("╭", border),
+		seg(
+			title,
+			active
+				? background(STATUS_COLORS[column] ?? "gray").black.bold
+				: accent.bold,
+		),
+		seg("─".repeat(fill), border),
+		seg(tail, active ? accent.bold : chalk.dim),
+		seg("╮", border),
+	];
+}
+
+/** One row of a column's box: `│ content │`, content padded/cut to `inner`. */
+function boxRow(
+	content: readonly Seg[],
+	inner: number,
+	border: ChalkInstance,
+): Seg[] {
+	const cut = narrow(content, inner);
+	return [
+		seg("│ ", border),
+		...cut,
+		seg(" ".repeat(Math.max(0, inner - plainWidth(cut)))),
+		seg(" │", border),
+	];
 }
 
 function taskCard(
@@ -297,9 +332,9 @@ function taskCard(
 		[
 			seg(selected ? "▸ " : "  ", item),
 			seg(STATUS_GLYPHS[task.status] ?? "·", selected ? item : accent),
-			seg(` ${task.name}`, item),
+			seg(` ${ellipsize(task.name, Math.max(1, width - 4))}`, item),
 		],
-		[seg(ellipsize(meta, Math.max(4, width - 2)), chalk.dim)],
+		[seg(`  ${ellipsize(meta, Math.max(4, width - 2))}`, chalk.dim)],
 		[],
 	];
 }

@@ -149,6 +149,18 @@ function rowToEvent(row: unknown): AppEvent {
 	};
 }
 
+/**
+ * Ids in `table` starting with `prefix`. `prefix` must be hex digits and
+ * dashes only, so it can be used in a LIKE pattern without escaping.
+ */
+function prefixIds(db: Database, table: string, prefix: string): string[] {
+	if (!/^[0-9a-f-]+$/i.test(prefix)) return [];
+	const rows = db
+		.query(`SELECT id FROM ${table} WHERE id LIKE ? ORDER BY id LIMIT 5`)
+		.all(`${prefix}%`) as Array<{ id: string }>;
+	return rows.map((r) => r.id);
+}
+
 export class SqliteProjectRepository implements ProjectRepository {
 	constructor(private readonly db: Database) {}
 
@@ -164,6 +176,10 @@ export class SqliteProjectRepository implements ProjectRepository {
 	findById(id: string): Project | null {
 		const row = this.db.query("SELECT * FROM projects WHERE id = ?").get(id);
 		return row ? rowToProject(row) : null;
+	}
+
+	findIdsByPrefix(prefix: string): string[] {
+		return prefixIds(this.db, "projects", prefix);
 	}
 
 	findAll(): Project[] {
@@ -203,6 +219,10 @@ export class SqliteEpicRepository implements EpicRepository {
 	findById(id: string): Epic | null {
 		const row = this.db.query("SELECT * FROM epics WHERE id = ?").get(id);
 		return row ? rowToEpic(row) : null;
+	}
+
+	findIdsByPrefix(prefix: string): string[] {
+		return prefixIds(this.db, "epics", prefix);
 	}
 
 	findByProject(projectId: string): Epic[] {
@@ -245,6 +265,10 @@ export class SqliteTaskRepository implements TaskRepository {
 	findById(id: string): Task | null {
 		const row = this.db.query("SELECT * FROM tasks WHERE id = ?").get(id);
 		return row ? rowToTask(row) : null;
+	}
+
+	findIdsByPrefix(prefix: string): string[] {
+		return prefixIds(this.db, "tasks", prefix);
 	}
 
 	findByEpic(

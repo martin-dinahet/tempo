@@ -45,6 +45,7 @@ const projectList: CommandLeaf = {
 
 const projectShow: CommandLeaf = {
 	path: "project show",
+	ids: { positional: "project" },
 	spec: {},
 	usage: "project show <projectId>",
 	summary: "Show a project and its epics",
