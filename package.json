@@ -1,0 +1,29 @@
+{
+	"name": "tempo",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"dev": "bun run ./src/main.ts",
+		"tempo": "bun run ./src/main.ts",
+		"tui": "bun run ./src/tui/main.ts",
+		"preview": "bun run ./scripts/preview-tui.ts",
+		"lint": "biome lint",
+		"format": "biome format --write",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit"
+	},
+	"bin": {
+		"tempo": "./src/main.ts"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.14",
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^7"
+	},
+	"dependencies": {
+		"chalk": "^5.6.2",
+		"zod": "^4.6.5"
+	}
+}
